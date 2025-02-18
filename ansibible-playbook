@@ -1,0 +1,106 @@
+- name: Apply Security Updates & Perform Health Check on Linux & Windows
+  hosts: all
+  gather_facts: yes
+
+  tasks:
+
+    - name: Get current date and time
+      command: date +"%Y-%m-%d_%H-%M"
+      register: current_datetime
+      delegate_to: localhost
+      run_once: true
+
+    # Linux Patching
+    - name: Update package cache (Linux)
+      ansible.builtin.apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Install security updates (Linux)
+      ansible.builtin.apt:
+        upgrade: dist
+        autoremove: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Check if a reboot is required (Linux)
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required_file
+      when: ansible_os_family == "Debian"
+
+    - name: Reboot the system if required (Linux)
+      reboot:
+      when: reboot_required_file.stat.exists and ansible_os_family == "Debian"
+
+    # Windows Patching
+    - name: Install Windows Updates (Security & Definition Updates)
+      win_updates:
+        category_names:
+          - SecurityUpdates
+          - DefinitionUpdates
+          - UpdateRollups
+        reboot: yes
+      when: ansible_os_family == "Windows"
+
+    # System Health Checks
+    - name: Check Uptime
+      command: uptime
+      register: uptime_output
+      when: ansible_os_family == "Debian"
+
+    - name: Check Disk Usage
+      command: df -h /
+      register: disk_usage
+      when: ansible_os_family == "Debian"
+
+    - name: Check Memory Usage
+      command: free -m
+      register: memory_usage
+      when: ansible_os_family == "Debian"
+
+    - name: Check CPU Load
+      shell: top -bn1 | grep "load average"
+      register: cpu_load
+      when: ansible_os_family == "Debian"
+
+    - name: Check Running Services
+      command: systemctl list-units --type=service --state=running
+      register: running_services
+      when: ansible_os_family == "Debian"
+
+    - name: Format Health Check Output (Linux)
+      set_fact:
+        formatted_log: |
+          ======================================================
+          ✅ Server: {{ inventory_hostname }}
+          🕒 Timestamp: {{ current_datetime.stdout }}
+          ======================================================
+
+          🔹 **System Uptime**
+          --------------------
+          {{ uptime_output.stdout }}
+
+          🔹 **Disk Usage**
+          -----------------
+          {{ disk_usage.stdout }}
+
+          🔹 **Memory Usage**
+          -------------------
+          {{ memory_usage.stdout }}
+
+          🔹 **CPU Load**
+          ---------------
+          {{ cpu_load.stdout }}
+
+          🔹 **Running Services**
+          -----------------------
+          {{ running_services.stdout }}
+
+          ======================================================
+
+    - name: Save Formatted Log File (Linux)
+      local_action:
+        module: copy
+        content: "{{ formatted_log }}"
+        dest: "/var/log/ansible_health_checks_{{ inventory_hostname }}_{{ current_datetime.stdout }}.log"
+      when: ansible_os_family == "Debian"
