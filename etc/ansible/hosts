@@ -1,0 +1,5 @@
+[linux_servers]
+ansible-target-1 ansible_host=51.8.104.123 ansible_user=azureuser ansible_python_interpreter=/usr/bin>ansible-target-2 ansible_host=20.83.184.113 ansible_user=azureuser ansible_python_interpreter=/usr/bi>
+
+[windows_servers]
+win-target ansible_host=20.115.59.117 ansible_user=azureuser ansible_password='password@123' ansible_>
