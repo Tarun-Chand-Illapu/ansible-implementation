@@ -5,14 +5,14 @@
 
   tasks:
 
-    # ✅ Get current date-time for consistent logging
+    # Get current date-time for consistent logging
     - name: Get current date and time
       command: date +"%Y-%m-%d_%H-%M"
       register: current_datetime
       delegate_to: localhost
       run_once: true
 
-    # ✅ LINUX PATCHING
+    #  LINUX PATCHING
     - name: Update package cache (Linux)
       ansible.builtin.apt:
         update_cache: yes
@@ -33,10 +33,11 @@
       when: ansible_os_family == "Debian"
 
     - name: Reboot the system if required (Linux)
+      become: yes
       reboot:
       when: reboot_required_file.stat.exists | default(false) and ansible_os_family == "Debian"
 
-    # ✅ WINDOWS PATCHING
+    #  WINDOWS PATCHING
     - name: Install Windows Updates (Security & Definition Updates)
       win_updates:
         category_names:
@@ -47,7 +48,7 @@
       register: windows_updates
       when: ansible_os_family == "Windows"
 
-    # ✅ LINUX SYSTEM HEALTH CHECKS
+    #  LINUX SYSTEM HEALTH CHECKS
     - name: Check Uptime (Linux)
       command: uptime
       register: linux_uptime
@@ -73,7 +74,7 @@
       register: linux_running_services
       when: ansible_os_family == "Debian"
 
-    # ✅ WINDOWS SYSTEM HEALTH CHECKS
+    #  WINDOWS SYSTEM HEALTH CHECKS
     - name: Get System Boot Time (Windows)
       win_shell: "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime"
       register: windows_uptime
@@ -99,13 +100,13 @@
       register: windows_processes
       when: ansible_os_family == "Windows"
 
-    # ✅ FORMAT LOG OUTPUT (LINUX)
+    #  FORMAT LOG OUTPUT (LINUX)
     - name: Format Health Check Output (Linux)
       set_fact:
         formatted_log_linux: |
           ======================================================
-          ✅ Server: {{ inventory_hostname }} (Linux)
-          🕒 Timestamp: {{ current_datetime.stdout }}
+           Server: {{ inventory_hostname }} (Linux)
+           Timestamp: {{ current_datetime.stdout }}
           ======================================================
 
           🔹 **System Uptime**
@@ -134,22 +135,22 @@
 
           ======================================================
 
-    # ✅ SAVE LOG FILE (LINUX)
+    #  SAVE LOG FILE (LINUX)
     - name: Save Formatted Log File (Linux)
       become: yes
       local_action:
         module: copy
         content: "{{ formatted_log_linux }}"
-        dest: "/var/log/ansible_health_checks_{{ inventory_hostname }}_{{ current_datetime.stdout }}.log"
+        dest: "/home/azureuser/ansible_health_checks_{{ inventory_hostname }}_{{ current_datetime.stdout }}.log"
       when: ansible_os_family == "Debian"
 
-    # ✅ FORMAT LOG OUTPUT (WINDOWS)
+    #  FORMAT LOG OUTPUT (WINDOWS)
     - name: Format Health Check Output (Windows)
       set_fact:
         formatted_log_windows: |
           ======================================================
-          ✅ Server: {{ inventory_hostname }} (Windows)
-          🕒 Timestamp: {{ current_datetime.stdout }}
+           Server: {{ inventory_hostname }} (Windows)
+           Timestamp: {{ current_datetime.stdout }}
           ======================================================
 
           🔹 **System Boot Time**
@@ -182,11 +183,11 @@
 
           ======================================================
 
-    # ✅ SAVE LOG FILE (WINDOWS)
+    #  SAVE LOG FILE (WINDOWS)
     - name: Save Formatted Log File (Windows) on Control Node
       delegate_to: localhost
       run_once: false
       copy:
         content: "{{ formatted_log_windows }}"
-        dest: "/var/log/ansible_health_checks_{{ inventory_hostname }}_{{ current_datetime.stdout }}.log"
+        dest: "/home/azureuser/ansible_health_checks_{{ inventory_hostname }}_{{ current_datetime.stdout }}.log"
       when: ansible_os_family == "Windows"
