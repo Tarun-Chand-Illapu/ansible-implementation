@@ -1,4 +1,3 @@
----
 - name: Apply Security Updates & Perform Health Check on Linux & Windows
   hosts: all
   gather_facts: yes
@@ -17,8 +16,10 @@
     # =============================
 
     - name: Check Available Security Updates (Linux)
-      command: apt list --upgradable | grep -E 'security|update'
+      command: apt list --upgradable | grep 'security'
       register: available_updates
+      failed_when: available_updates.rc != 0 and available_updates.rc != 1
+      changed_when: false
       when: ansible_os_family == "Debian"
 
     - name: Update package cache (Linux)
@@ -33,8 +34,10 @@
       when: ansible_os_family == "Debian"
 
     - name: List Installed Security Updates (Linux)
-      command: apt list --installed | grep -E 'security|update'
+      command: apt list --installed | grep 'security'
       register: installed_updates
+      failed_when: installed_updates.rc != 0 and installed_updates.rc != 1
+      changed_when: false
       when: ansible_os_family == "Debian"
 
     - name: Check if a reboot is required (Linux)
@@ -45,7 +48,7 @@
 
     - name: Reboot the system if required (Linux)
       reboot:
-      when: reboot_required_file.stat.exists and ansible_os_family == "Debian"
+      when: reboot_required_file.stat is defined and reboot_required_file.stat.exists and ansible_os_family == "Debian"
 
     # =============================
     # 🔹 Windows Patching & Updates
