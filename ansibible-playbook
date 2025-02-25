@@ -1,16 +1,26 @@
+---
 - name: Apply Security Updates & Perform Health Check on Linux & Windows
   hosts: all
   gather_facts: yes
 
   tasks:
 
+    # Get Current Date-Time
     - name: Get current date and time
       command: date +"%Y-%m-%d_%H-%M"
       register: current_datetime
       delegate_to: localhost
       run_once: true
 
-    # Linux Patching
+    # =============================
+    # 🔹 Linux Patching & Updates
+    # =============================
+
+    - name: Check Available Security Updates (Linux)
+      command: apt list --upgradable | grep -E 'security|update'
+      register: available_updates
+      when: ansible_os_family == "Debian"
+
     - name: Update package cache (Linux)
       ansible.builtin.apt:
         update_cache: yes
@@ -20,6 +30,11 @@
       ansible.builtin.apt:
         upgrade: dist
         autoremove: yes
+      when: ansible_os_family == "Debian"
+
+    - name: List Installed Security Updates (Linux)
+      command: apt list --installed | grep -E 'security|update'
+      register: installed_updates
       when: ansible_os_family == "Debian"
 
     - name: Check if a reboot is required (Linux)
@@ -32,7 +47,10 @@
       reboot:
       when: reboot_required_file.stat.exists and ansible_os_family == "Debian"
 
-    # Windows Patching
+    # =============================
+    # 🔹 Windows Patching & Updates
+    # =============================
+
     - name: Install Windows Updates (Security & Definition Updates)
       win_updates:
         category_names:
@@ -40,35 +58,82 @@
           - DefinitionUpdates
           - UpdateRollups
         reboot: yes
+      register: windows_updates
       when: ansible_os_family == "Windows"
 
-    # System Health Checks
-    - name: Check Uptime
+    - name: Format Installed Windows Updates Log
+      set_fact:
+        windows_updates_log: |
+          🔹 **Windows Updates Installed**
+          ------------------------------
+          {% for update in windows_updates.installed_update_names %}
+            - {{ update }}
+          {% endfor %}
+      when: ansible_os_family == "Windows"
+
+    # =============================
+    # 🔹 System Health Checks (Linux)
+    # =============================
+
+    - name: Check Uptime (Linux)
       command: uptime
       register: uptime_output
       when: ansible_os_family == "Debian"
 
-    - name: Check Disk Usage
+    - name: Check Disk Usage (Linux)
       command: df -h /
       register: disk_usage
       when: ansible_os_family == "Debian"
 
-    - name: Check Memory Usage
+    - name: Check Memory Usage (Linux)
       command: free -m
       register: memory_usage
       when: ansible_os_family == "Debian"
 
-    - name: Check CPU Load
+    - name: Check CPU Load (Linux)
       shell: top -bn1 | grep "load average"
       register: cpu_load
       when: ansible_os_family == "Debian"
 
-    - name: Check Running Services
+    - name: Check Running Services (Linux)
       command: systemctl list-units --type=service --state=running
       register: running_services
       when: ansible_os_family == "Debian"
 
-    - name: Format Health Check Output (Linux)
+    # =============================
+    # 🔹 System Health Checks (Windows)
+    # =============================
+
+    - name: Get Windows System Uptime
+      win_shell: (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+      register: win_uptime
+      when: ansible_os_family == "Windows"
+
+    - name: Get Disk Usage (Windows)
+      win_shell: Get-PSDrive C | Select-Object Used, Free, @{Name='Total';Expression={$_.Used + $_.Free}}
+      register: win_disk_usage
+      when: ansible_os_family == "Windows"
+
+    - name: Get Memory Usage (Windows)
+      win_shell: Get-CimInstance Win32_OperatingSystem | Select-Object FreePhysicalMemory, TotalVisibleMemorySize
+      register: win_memory_usage
+      when: ansible_os_family == "Windows"
+
+    - name: Get CPU Load (Windows)
+      win_shell: Get-Counter '\Processor(_Total)\% Processor Time' | Select-Object -ExpandProperty CounterSamples
+      register: win_cpu_load
+      when: ansible_os_family == "Windows"
+
+    - name: Get Running Processes (Windows)
+      win_shell: Get-Process | Select-Object ProcessName, CPU
+      register: win_processes
+      when: ansible_os_family == "Windows"
+
+    # =============================
+    # 🔹 Formatting Logs for Compliance
+    # =============================
+
+    - name: Format Health Check Log (Linux)
       set_fact:
         formatted_log: |
           ======================================================
@@ -96,7 +161,55 @@
           -----------------------
           {{ running_services.stdout }}
 
+          🔹 **Linux Updates Installed**
+          ------------------------------
+          {% for update in installed_updates.stdout_lines %}
+            - {{ update }}
+          {% endfor %}
+          
           ======================================================
+      when: ansible_os_family == "Debian"
+
+    - name: Format Health Check Log (Windows)
+      set_fact:
+        formatted_log: |
+          ======================================================
+          ✅ Server: {{ inventory_hostname }}
+          🕒 Timestamp: {{ current_datetime.stdout }}
+          ======================================================
+
+          🔹 **System Uptime**
+          --------------------
+          {{ win_uptime.stdout }}
+
+          🔹 **Disk Usage**
+          -----------------
+          {{ win_disk_usage.stdout }}
+
+          🔹 **Memory Usage**
+          -------------------
+          {{ win_memory_usage.stdout }}
+
+          🔹 **CPU Load**
+          ---------------
+          {{ win_cpu_load.stdout }}
+
+          🔹 **Running Processes**
+          -----------------------
+          {{ win_processes.stdout }}
+
+          🔹 **Windows Updates Installed**
+          ------------------------------
+          {% for update in windows_updates.installed_update_names %}
+            - {{ update }}
+          {% endfor %}
+
+          ======================================================
+      when: ansible_os_family == "Windows"
+
+    # =============================
+    # 🔹 Save Logs for Compliance
+    # =============================
 
     - name: Save Formatted Log File (Linux)
       local_action:
@@ -104,3 +217,10 @@
         content: "{{ formatted_log }}"
         dest: "/var/log/ansible_health_checks_{{ inventory_hostname }}_{{ current_datetime.stdout }}.log"
       when: ansible_os_family == "Debian"
+
+    - name: Save Formatted Log File (Windows)
+      local_action:
+        module: copy
+        content: "{{ formatted_log }}"
+        dest: "/var/log/ansible_health_checks_{{ inventory_hostname }}_{{ current_datetime.stdout }}.log"
+      when: ansible_os_family == "Windows"
